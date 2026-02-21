@@ -11,7 +11,7 @@ def main():
     parser.add_argument("--visualize", action="store_true", help="Visualize results")
     parser.add_argument("--samples", type=int, default=500, help="Number of samples to generate")
     parser.add_argument("--screenshot", type=str, default=None, help="Save screenshot to file instead of showing window")
-    parser.add_argument("--model", type=str, default="mlp", choices=["mlp", "linear", "ridge", "lasso", "random_forest", "knn", "svr", "gradient_boosting"], help="Model type to train")
+    parser.add_argument("--model", type=str, default="mlp", choices=["mlp", "gcn"], help="Model type to train")
     
     args = parser.parse_args()
     
@@ -42,7 +42,7 @@ def main():
         viz = ROMVisualizer()
         # Interactive loop or static demo?
         # Let's do a static demo with random params
-        l, w, d, load = 10.0, 3.0, 1.0, 50.0
+        l, w, d, load = 20.0, 3.0, 1.0, 100.0 
         print(f"Predicting for L={l}, W={w}, Depth={d}, Load={load}")
         viz.predict_and_plot(l, w, d, load, screenshot=args.screenshot)
 
