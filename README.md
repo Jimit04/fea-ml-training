@@ -3,7 +3,7 @@
 A proof-of-concept that uses **Machine Learning to replace expensive FEA solvers**.
 A neural network is trained on data generated from Euler-Bernoulli beam theory, then used to predict full displacement and stress fields in milliseconds.
 
-> 📄 See [DOCUMENTATION.md](DOCUMENTATION.md) for detailed explanation of the physics, architecture, and training strategy.
+> 📄 See [docs/Overview.md](docs/Overview.md) for detailed explanation of the physics, architecture, and training strategy.
 
 ---
 
