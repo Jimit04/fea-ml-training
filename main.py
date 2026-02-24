@@ -42,7 +42,7 @@ def main():
         viz = ROMVisualizer()
         # Interactive loop or static demo?
         # Let's do a static demo with random params
-        l, w, d, load = 20.0, 3.0, 1.0, 100.0 
+        l, w, d, load = 10.0, 3.0, 3.0, 500.0 
         print(f"Predicting for L={l}, W={w}, Depth={d}, Load={load}")
         viz.predict_and_plot(l, w, d, load, screenshot=args.screenshot)
 

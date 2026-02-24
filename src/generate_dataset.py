@@ -12,7 +12,7 @@ def generate_dataset(n_samples=100, output_dir="mock_data"):
     l_range = (5.0, 20.0)
     w_range = (1.0, 3.0)
     d_range = (1.0, 3.0)
-    load_range = (100.0, 500.0) # Increased load for steel
+    load_range = (-500.0, 500.0) # Increased load for steel
     
     for i in tqdm(range(n_samples)):
         l = np.random.uniform(*l_range)

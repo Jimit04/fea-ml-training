@@ -1,3 +1,4 @@
+import datetime
 import numpy as np
 import os
 import glob
@@ -144,9 +145,12 @@ def build_gcn(input_dim: int, output_dim: int, A_hat: np.ndarray) -> keras.Model
     node_init = layers.Dense(32, activation="swish")(broadcast)   # (B, N, 32)
 
     # GCN stack
-    x = GCNLayer(64,  activation="relu", name="gcn_1")([node_init, a_inp])
-    x = GCNLayer(128, activation="relu", name="gcn_2")([x, a_inp])
-    x = GCNLayer(64,  activation="relu", name="gcn_3")([x, a_inp])
+    x = GCNLayer(128,  activation="relu",       name="gcn_1")([node_init, a_inp])
+    x = GCNLayer(128,  activation="leaky_relu", name="gcn_2")([x, a_inp])
+    x = GCNLayer(128,  activation="relu",       name="gcn_3")([x, a_inp])
+    x = GCNLayer(128,  activation="leaky_relu", name="gcn_4")([x, a_inp])
+    x = GCNLayer(128,  activation="relu",       name="gcn_5")([x, a_inp])
+    x = GCNLayer(128,  activation="leaky_relu", name="gcn_6")([x, a_inp])
     # x: (B, N, 64)
 
     # Global average pool → (B, 64)
@@ -204,16 +208,35 @@ class ROMTrainer:
                np.array(Y_stress, dtype=np.float32)
 
     # ── Training callbacks ─────────────────────
-    def _callbacks(self, monitor="val_loss", patience=20):
+    def _callbacks(self, monitor="val_loss", patience=20, log_dir="logs"):
+        # Create timestamped log directory
+        run_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        tb_log_dir = os.path.join(log_dir, run_id)
+
+        tensorboard_cb = keras.callbacks.TensorBoard(
+            log_dir=tb_log_dir,
+            histogram_freq=1,          # log weight histograms
+            write_graph=True,
+            write_images=False,
+            update_freq="epoch",       # or "batch" for finer granularity
+            profile_batch=0            # set to (100,110) to profile specific batches
+        )
+
         return [
             keras.callbacks.EarlyStopping(
-                monitor=monitor, patience=patience,
-                restore_best_weights=True, verbose=1
+                monitor=monitor,
+                patience=patience,
+                restore_best_weights=True,
+                verbose=1
             ),
             keras.callbacks.ReduceLROnPlateau(
-                monitor=monitor, factor=0.5, patience=10,
-                min_lr=1e-6, verbose=1
+                monitor=monitor,
+                factor=0.5,
+                patience=10,
+                min_lr=1e-6,
+                verbose=1
             ),
+            tensorboard_cb
         ]
 
     # ── Prepare inputs for GCN ─────────────────
