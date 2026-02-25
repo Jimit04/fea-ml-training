@@ -386,7 +386,12 @@ fea-ml-training/
 ├── src/
 │   ├── data_generator.py      ← MockFEASolver (Euler-Bernoulli physics)
 │   ├── generate_dataset.py    ← Batch sample generation loop
-│   ├── rom_model.py           ← GCNLayer, MLP/GCN builders, ROMTrainer
+│   ├── rom_model/             ← ROM model package
+│   │   ├── __init__.py        ← Re-exports all public symbols
+│   │   ├── layers.py          ← GCNLayer (custom Keras layer)
+│   │   ├── adjacency.py       ← Normalised adjacency matrix builder
+│   │   ├── architectures.py   ← MLP & GCN model factories
+│   │   └── trainer.py         ← ROMTrainer (training pipeline)
 │   └── visualizer.py          ← ROMVisualizer (PyVista rendering)
 ├── tests/                     ← Batch scripts for end-to-end testing
 ├── mock_data/<sampling>/      ← Generated .npy and .vtk samples
