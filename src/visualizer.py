@@ -6,6 +6,7 @@ displacement / stress fields on a warped beam mesh.
 
 import pyvista as pv
 import numpy as np
+import json
 import os
 import keras
 from src.data_generator import MockFEASolver
@@ -64,6 +65,14 @@ class ROMVisualizer:
         # Build adjacency matrix for GCN inference
         if self.model_type == "gcn":
             self._A_hat = build_beam_adjacency(self.nx, self.ny, self.nz)
+
+        # Load training metrics (R² scores) if available
+        metrics_path = os.path.join(model_dir, "metrics.json")
+        if os.path.exists(metrics_path):
+            with open(metrics_path) as f:
+                self.metrics = json.load(f)
+        else:
+            self.metrics = {}
 
     # ── Normalise input ────────────────────────
     def _scale(self, params: np.ndarray) -> np.ndarray:
@@ -185,9 +194,19 @@ class ROMVisualizer:
         pl.add_mesh(warped, scalars="Predicted_Stress", cmap="jet", show_edges=True)
         pl.show_grid()
         pl.show_axes()
+        # R² annotation (from training metrics)
+        r2_disp   = self.metrics.get("r2_displacement")
+        r2_stress = self.metrics.get("r2_stress")
+        r2_text = ""
+        if r2_disp is not None:
+            r2_text += f"\nR² Disp   = {r2_disp:.4f}"
+        if r2_stress is not None:
+            r2_text += f"\nR² Stress = {r2_stress:.4f}"
+
         pl.add_text(
             f"Max |Disp|   = {pred_max_disp:.4e} mm\n"
-            f"Max |Stress| = {pred_max_stress:.4e} MPa",
+            f"Max |Stress| = {pred_max_stress:.4e} MPa"
+            f"{r2_text}",
             font_size=ANNOT_SZ, font=FONT, position="lower_left",
         )
 

@@ -1,10 +1,12 @@
 """End-to-end training pipeline for ROM models."""
 
 import datetime
+import json
 import numpy as np
 import os
 import glob
 import keras
+from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -152,84 +154,99 @@ class ROMTrainer:
         return [X_scaled, A_batch]
 
     # ── Single model train helper ──────────────
-    def _train_one(self, model_name: str, X_train_s, X_test_s,
-                   y_train, y_test, output_dim: int) -> keras.Model:
-        """Build, train, and evaluate a single displacement or stress model.
+    def _train_one(self, model_name: str, X_train_s, X_val_s, X_test_s,
+                   y_train, y_val, y_test, output_dim: int):
+        """Build, train, evaluate, and score a single model.
 
         Parameters
         ----------
         model_name : str
             Human-readable label used in log messages (e.g. ``"Displacement"``).
-        X_train_s, X_test_s : np.ndarray
-            Scaled input features for train / test splits.
-        y_train, y_test : np.ndarray
-            Target arrays for train / test splits.
+        X_train_s, X_val_s, X_test_s : np.ndarray
+            Scaled input features for train / validation / test splits.
+        y_train, y_val, y_test : np.ndarray
+            Target arrays for train / validation / test splits.
         output_dim : int
             Number of output neurons.
 
         Returns
         -------
-        keras.Model
-            The trained model with best weights restored.
+        tuple[keras.Model, float]
+            The trained model (best weights restored) and R² score on the
+            held-out test set.
         """
 
         if self.model_type == "mlp":
             model = build_mlp(input_dim=X_train_s.shape[1], output_dim=output_dim)
-            train_in, test_in = X_train_s, X_test_s
+            train_in, val_in, test_in = X_train_s, X_val_s, X_test_s
         else:  # gcn
             model = build_gcn(input_dim=X_train_s.shape[1], output_dim=output_dim,
                                A_hat=self._A_hat)
             train_in = self._gcn_inputs(X_train_s)
+            val_in   = self._gcn_inputs(X_val_s)
             test_in  = self._gcn_inputs(X_test_s)
 
         print(model.summary())
         history = model.fit(
             train_in, y_train,
-            validation_data=(test_in, y_test),
+            validation_data=(val_in, y_val),
             epochs=300,
             batch_size=min(64, len(y_train)),
             callbacks=self._callbacks(),
             verbose=1,
         )
 
-        # Evaluate
+        # Evaluate on held-out test set
         results = model.evaluate(test_in, y_test, verbose=0)
         print(f"  [{model_name}] Test MSE: {results[0]:.6f}  MAE: {results[1]:.6f}")
 
-        return model
+        # Compute R² on test set
+        y_pred = model.predict(test_in, verbose=0)
+        r2 = float(r2_score(y_test, y_pred))
+        print(f"  [{model_name}] Test R²:  {r2:.6f}")
+
+        return model, r2
 
     # ── Main train ─────────────────────────────
     def train(self):
         """Run the full training pipeline.
 
         1. Loads data via :meth:`load_data`.
-        2. Scales inputs with ``StandardScaler``.
-        3. Trains displacement and stress models sequentially.
-        4. Saves ``.keras`` models, scaler arrays, and model-type flag to
-           ``self.model_dir``.
+        2. Splits into train (80%), test (15%), and validate (5%) sets.
+        3. Scales inputs with ``StandardScaler``.
+        4. Trains displacement and stress models sequentially.
+        5. Computes R² on the held-out test set for each model.
+        6. Saves ``.keras`` models, scaler arrays, model-type flag, and
+           ``metrics.json`` to ``self.model_dir``.
         """
         print(f"Training with model: {self.model_type.upper()}")
         X, Y_disp, Y_stress = self.load_data()
         print(f"Data shape: X={X.shape}, Y_disp={Y_disp.shape}, Y_stress={Y_stress.shape}")
 
+        # 80/15/5 split
+        (X_train, X_test, X_val,
+         yd_train, yd_test, yd_val,
+         ys_train, ys_test, ys_val) = self._split_all(X, Y_disp, Y_stress)
+        print(f"Split: train={len(X_train)}, test={len(X_test)}, val={len(X_val)}")
+
         # Standardise inputs
         scaler_x = StandardScaler()
-        X_train, X_test, yd_train, yd_test, ys_train, ys_test = \
-            self._split_all(X, Y_disp, Y_stress)
-
         X_train_s = scaler_x.fit_transform(X_train).astype(np.float32)
         X_test_s  = scaler_x.transform(X_test).astype(np.float32)
+        X_val_s   = scaler_x.transform(X_val).astype(np.float32)
 
         # Train displacement model
         print("\n[1/2] Training Displacement Model...")
-        model_disp = self._train_one("Displacement", X_train_s, X_test_s,
-                                     yd_train, yd_test, output_dim=Y_disp.shape[1])
+        model_disp, r2_disp = self._train_one(
+            "Displacement", X_train_s, X_val_s, X_test_s,
+            yd_train, yd_val, yd_test, output_dim=Y_disp.shape[1])
         model_disp.save(os.path.join(self.model_dir, "rom_disp.keras"))
 
         # Train stress model
         print("\n[2/2] Training Stress Model...")
-        model_stress = self._train_one("Stress", X_train_s, X_test_s,
-                                       ys_train, ys_test, output_dim=Y_stress.shape[1])
+        model_stress, r2_stress = self._train_one(
+            "Stress", X_train_s, X_val_s, X_test_s,
+            ys_train, ys_val, ys_test, output_dim=Y_stress.shape[1])
         model_stress.save(os.path.join(self.model_dir, "rom_stress.keras"))
 
         # Persist scaler statistics as .npy (avoids joblib dependency)
@@ -238,24 +255,61 @@ class ROMTrainer:
         # Save model type so the visualiser knows how to prepare inputs
         np.save(os.path.join(self.model_dir, "model_type.npy"),  np.array([self.model_type]))
 
+        # Save metrics (R² scores + split sizes)
+        metrics = {
+            "r2_displacement": r2_disp,
+            "r2_stress": r2_stress,
+            "model_type": self.model_type,
+            "n_train": len(X_train),
+            "n_test": len(X_test),
+            "n_val": len(X_val),
+        }
+        metrics_path = os.path.join(self.model_dir, "metrics.json")
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        print(f"\nMetrics saved to: {metrics_path}")
+        print(f"  R² Displacement: {r2_disp:.6f}")
+        print(f"  R² Stress:       {r2_stress:.6f}")
+
         print("\nTraining complete. Models saved to:", self.model_dir)
 
-    # ── Helper: consistent 3-way split ────────
+    # ── Helper: 3-way split (80/15/5) ─────────
     @staticmethod
-    def _split_all(X, Y_disp, Y_stress, test_size=0.2, seed=42):
-        """Split X, Y_disp, and Y_stress into train/test sets consistently.
+    def _split_all(X, Y_disp, Y_stress, train_frac=0.80, test_frac=0.15, seed=42):
+        """Split X, Y_disp, and Y_stress into train/test/validate sets.
+
+        Parameters
+        ----------
+        X, Y_disp, Y_stress : np.ndarray
+            Full dataset arrays.
+        train_frac : float, optional
+            Fraction of data for training (default ``0.80``).
+        test_frac : float, optional
+            Fraction of data for testing (default ``0.15``).
+            The remainder (``1 - train_frac - test_frac``) is used for
+            validation (default ``0.05``).
+        seed : int, optional
+            Random seed for reproducibility (default ``42``).
 
         Returns
         -------
         tuple
-            ``(X_train, X_test, Y_disp_train, Y_disp_test,
-            Y_stress_train, Y_stress_test)``.
+            ``(X_train, X_test, X_val,
+            Y_disp_train, Y_disp_test, Y_disp_val,
+            Y_stress_train, Y_stress_test, Y_stress_val)``.
         """
         idx = np.arange(len(X))
-        idx_train, idx_test = train_test_split(idx, test_size=test_size, random_state=seed)
-        return (X[idx_train], X[idx_test],
-                Y_disp[idx_train], Y_disp[idx_test],
-                Y_stress[idx_train], Y_stress[idx_test])
+        # First split: train vs (test + val)
+        rest_frac = 1.0 - train_frac
+        idx_train, idx_rest = train_test_split(
+            idx, test_size=rest_frac, random_state=seed)
+        # Second split: test vs val from the remainder
+        val_frac_of_rest = 1.0 - (test_frac / rest_frac)  # 0.05/0.20 = 0.25
+        idx_test, idx_val = train_test_split(
+            idx_rest, test_size=val_frac_of_rest, random_state=seed)
+        return (X[idx_train], X[idx_test], X[idx_val],
+                Y_disp[idx_train], Y_disp[idx_test], Y_disp[idx_val],
+                Y_stress[idx_train], Y_stress[idx_test], Y_stress[idx_val])
 
 
 if __name__ == "__main__":

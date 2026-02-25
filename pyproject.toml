@@ -15,6 +15,8 @@ dependencies = [
     "sympy>=1.14.0",
     "tensorflow[gpu]>=2.20.0",
     "torch>=2.10.0",
+    "torchaudio>=2.10.0",
+    "torchvision>=0.25.0",
     "tqdm>=4.67.1",
     "vtk>=9.5.2",
 ]
