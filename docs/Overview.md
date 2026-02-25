@@ -26,9 +26,9 @@ Given four input parameters:
 | Symbol | Name | Unit | Range |
 |--------|------|------|-------|
 | L | Length | mm | 5 – 20 |
-| w | Width  | mm | 0.5 – 3 |
-| d | Depth  | mm | 0.1 – 0.5 |
-| P | Load   | N  | 1 000 – 50 000 |
+| w | Width  | mm | 1 – 3 |
+| d | Depth  | mm | 1 – 3 |
+| P | Load   | N  | -500 – 500 |
 
 We want to predict the **full displacement field** (a 3D vector at every mesh node) and the
 **full stress field** (σ_xx at every mesh node) — without running a traditional FEA solver.
@@ -238,13 +238,16 @@ Step 1 — Lift global params to per-node features:
   RepeatVector(756)    →  shape (756, 4)   ← same params broadcast to all 756 nodes
   Dense(32, swish)     →  shape (756, 32)  ← initial node embeddings
 
-Step 2 — Graph message passing (3 GCN layers):
-  GCNLayer(64,  ReLU)  →  shape (756, 64)
-  GCNLayer(128, ReLU)  →  shape (756, 128)
-  GCNLayer(64,  ReLU)  →  shape (756, 64)
+Step 2 — Graph message passing (6 GCN layers):
+  GCNLayer(128, ReLU)       →  shape (756, 128)
+  GCNLayer(128, LeakyReLU)  →  shape (756, 128)
+  GCNLayer(128, ReLU)       →  shape (756, 128)
+  GCNLayer(128, LeakyReLU)  →  shape (756, 128)
+  GCNLayer(128, ReLU)       →  shape (756, 128)
+  GCNLayer(128, LeakyReLU)  →  shape (756, 128)
 
 Step 3 — Global readout (pool over all nodes):
-  GlobalAveragePooling1D() →  shape (64,)  ← one vector summarising the whole mesh
+  GlobalAveragePooling1D() →  shape (128,)  ← one vector summarising the whole mesh
 
 Step 4 — Decode to output field:
   Dense(256, swish)    →  shape (256,)
@@ -253,7 +256,7 @@ Step 4 — Decode to output field:
   Dense(output_dim)    →  shape (2268,) or (756,)
 ```
 
-**Total trainable parameters ≈ 554,900** (~2.12 MB)
+**Total trainable parameters ≈ 554,900**
 
 ### 5.5 Why GCN might outperform MLP
 
@@ -353,20 +356,20 @@ To improve accuracy: train on more samples (≥ 1000) and train for more epochs.
 ## 8. How to Run
 
 ```bash
-# 1. Generate 500 training samples
-uv run .\main.py --generate --samples 500
+# 1. Generate 500 training samples (with LHS sampling)
+uv run .\main.py --generate --samples 500 --sampling lhs
 
-# 2. Train with MLP (default)
+# 2. Train with MLP
 uv run .\main.py --train --model mlp
 
-# 3. Train with GCN
+# 3. Train with GCN (default)
 uv run .\main.py --train --model gcn
 
 # 4. Visualise (uses the last trained model)
 uv run .\main.py --visualize
 
 # 5. Run entire pipeline at once
-uv run .\main.py --generate --train --visualize --samples 500 --model mlp
+uv run .\main.py --generate --train --visualize --samples 500 --sampling taguchi --model gcn
 
 # Save a screenshot instead of opening a window
 uv run .\main.py --visualize --screenshot output.png
@@ -377,14 +380,17 @@ uv run .\main.py --visualize --screenshot output.png
 ```
 fea-ml-training/
 ├── main.py                    ← Entry point, CLI
+├── docs/
+│   ├── Overview.md            ← This file
+│   └── GCNs.md                ← GCN deep-dive reference
 ├── src/
 │   ├── data_generator.py      ← MockFEASolver (Euler-Bernoulli physics)
 │   ├── generate_dataset.py    ← Batch sample generation loop
 │   ├── rom_model.py           ← GCNLayer, MLP/GCN builders, ROMTrainer
 │   └── visualizer.py          ← ROMVisualizer (PyVista rendering)
-├── mock_data/                 ← Generated .npy and .vtk samples
-├── models/                    ← Saved .keras models + scaler .npy files
-└── DOCUMENTATION.md           ← This file
+├── tests/                     ← Batch scripts for end-to-end testing
+├── mock_data/<sampling>/      ← Generated .npy and .vtk samples
+└── models/<sampling>/         ← Saved .keras models + scaler .npy files
 ```
 
 ---

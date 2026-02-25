@@ -1,3 +1,10 @@
+"""Batch dataset generation using configurable sampling strategies.
+
+Creates a design table of beam parameters sampled via one of several
+space-filling strategies, runs the ``MockFEASolver`` for each sample, and
+stores the results as ``.npy`` / ``.vtk`` files alongside a CSV design table.
+"""
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -14,6 +21,34 @@ def generate_dataset(
     taguchi_levels=5,     # Only used if sampling="taguchi"
     seed=42
 ):
+    """Generate a synthetic FEA dataset using the given sampling strategy.
+
+    Parameters
+    ----------
+    n_samples : int, optional
+        Maximum number of samples to generate (default ``100``).
+    output_dir : str, optional
+        Root output directory; files are placed under ``<output_dir>/<sampling>/``
+        (default ``"mock_data"``).
+    sampling : ``{"random", "lhs", "sobol", "taguchi"}``, optional
+        Sampling strategy used to fill the parameter space (default ``"taguchi"``).
+    taguchi_levels : int, optional
+        Number of levels per factor when ``sampling="taguchi"`` (default ``5``).
+    seed : int, optional
+        Random seed for reproducibility (default ``42``).
+
+    Notes
+    -----
+    If the output directory already contains data, generation is skipped to
+    avoid overwriting previous results.
+
+    Parameter ranges
+    ~~~~~~~~~~~~~~~~
+    - Length : 5.0 – 20.0 mm
+    - Width  : 1.0 – 3.0 mm
+    - Depth  : 1.0 – 3.0 mm
+    - Load   : -500.0 – 500.0 N
+    """
     output_dir = os.path.join(output_dir, sampling)
 
     if not os.path.exists(output_dir) or len(os.listdir(output_dir)) == 0:

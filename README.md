@@ -3,7 +3,8 @@
 A proof-of-concept that uses **Machine Learning to replace expensive FEA solvers**.
 A neural network is trained on data generated from Euler-Bernoulli beam theory, then used to predict full displacement and stress fields in milliseconds.
 
-> 📄 See [docs/Overview.md](docs/Overview.md) for detailed explanation of the physics, architecture, and training strategy.
+> 📄 See [docs/Overview.md](docs/Overview.md) for a detailed explanation of the physics, architecture, and training strategy.
+> 📐 See [docs/GCNs.md](docs/GCNs.md) for an in-depth primer on Graph Convolutional Networks.
 
 ---
 
@@ -31,13 +32,13 @@ uv sync
 # Full pipeline (generate → train → visualize)
 uv run .\main.py
 
-# Generate 500 samples
-uv run main.py --generate --samples 500 --sampling "taguchi"
+# Generate 500 samples with a specific sampling strategy
+uv run main.py --generate --samples 500 --sampling taguchi
 
-# Train with MLP (default)
+# Train with MLP
 uv run .\main.py --train --model mlp
 
-# Train with GCN
+# Train with GCN (default)
 uv run .\main.py --train --model gcn
 
 # Visualize predictions vs ground truth
@@ -49,14 +50,17 @@ uv run .\main.py --visualize --screenshot output.png
 
 ### Arguments
 
-| Argument              | Description                               | Default |
-| --------------------- | ----------------------------------------- | ------- |
-| `--generate`        | Generate synthetic dataset                | —      |
-| `--train`           | Train the ROM model                       | —      |
-| `--visualize`       | Launch 3D visualizer                      | —      |
-| `--samples N`       | Number of samples to generate             | 500     |
-| `--model`           | Model type:`mlp` or `gcn`             | `mlp` |
-| `--screenshot PATH` | Save screenshot instead of opening window | —      |
+| Argument             | Description                                          | Default   |
+| -------------------- | ---------------------------------------------------- | --------- |
+| `--generate`         | Generate synthetic dataset                           | —         |
+| `--train`            | Train the ROM model                                  | —         |
+| `--visualize`        | Launch 3D visualizer                                 | —         |
+| `--samples N`        | Number of samples to generate                        | `500`     |
+| `--sampling`         | Sampling strategy: `random`, `lhs`, `sobol`, `taguchi` | `lhs`   |
+| `--model`            | Model type: `mlp` or `gcn`                           | `gcn`     |
+| `--screenshot PATH`  | Save screenshot instead of opening window            | —         |
+
+> If no stage flags (`--generate`, `--train`, `--visualize`) are provided, the full pipeline runs end-to-end.
 
 ---
 
@@ -66,28 +70,32 @@ uv run .\main.py --visualize --screenshot output.png
 
 Deep Dense network: `4 → 256 → 512 → 512 → 256 → output`
 
-- Swish activations, BatchNorm, Dropout
-- ~723,700 parameters
+- Swish (SiLU) activations, BatchNorm, Dropout (15%)
+- Compiled with Adam (lr=1e-3) and MSE loss
 
 ### GCN (Graph Convolutional Network)
 
 Treats the beam mesh as a graph. Performs spectral convolution over the 21×6×6 node adjacency.
 
-- 3 GCN layers (64 → 128 → 64), global average pool, Dense decoder head
-- ~554,900 parameters
+- Lifts global params → per-node features via `RepeatVector(756)` + `Dense(32)`
+- 6 GCN message-passing layers (`GCNLayer(128)`) with alternating ReLU / LeakyReLU
+- `GlobalAveragePooling1D` → Dense decoder head (256 → 512 → output)
+- Compiled with Adam (lr=1e-3) and MSE loss
 
 ---
 
 ## Inputs & Physics
 
-| Parameter | Symbol | Unit | Range           |
-| --------- | ------ | ---- | --------------- |
+| Parameter | Symbol | Unit | Range          |
+| --------- | ------ | ---- | -------------- |
 | Length    | L      | mm   | 5 – 20         |
-| Width     | w      | mm   | 0.5 – 3        |
-| Depth     | d      | mm   | 0.1 – 0.5      |
-| Load      | P      | N    | 1,000 – 50,000 |
+| Width     | w      | mm   | 1 – 3          |
+| Depth     | d      | mm   | 1 – 3          |
+| Load      | P      | N    | -500 – 500     |
 
 **Material:** Steel — E = 210,000 MPa, ν = 0.29
+
+**Mesh:** Structured hexahedral grid, 21 × 6 × 6 = 756 nodes
 
 ---
 
@@ -96,12 +104,15 @@ Treats the beam mesh as a graph. Performs spectral convolution over the 21×6×6
 ```
 fea-ml-training/
 ├── main.py                    ← CLI entry point
-├── DOCUMENTATION.md           ← Detailed documentation
+├── docs/
+│   ├── Overview.md            ← Detailed physics & architecture docs
+│   └── GCNs.md                ← GCN deep-dive reference
 ├── src/
 │   ├── data_generator.py      ← MockFEASolver (Euler-Bernoulli physics)
-│   ├── generate_dataset.py    ← Batch sample generation
+│   ├── generate_dataset.py    ← Batch sample generation (multiple sampling strategies)
 │   ├── rom_model.py           ← GCNLayer, MLP/GCN builders, ROMTrainer
-│   └── visualizer.py          ← PyVista 3D visualizer
-├── mock_data/                 ← Generated .npy and .vtk samples
-└── models/                    ← Saved .keras models and .npy scalers
+│   └── visualizer.py          ← PyVista 3D visualizer (predicted vs ground truth)
+├── tests/                     ← Batch scripts for end-to-end testing
+├── mock_data/<sampling>/      ← Generated .npy and .vtk samples
+└── models/<sampling>/         ← Saved .keras models and .npy scalers
 ```
