@@ -129,7 +129,7 @@ class ROMVisualizer:
 
         pl.link_views()
         if screenshot:
-            pl.show(screenshot=screenshot)
+            pl.show(screenshot=screenshot, window_size=(1920, 1080))
         else:
             pl.show()
 

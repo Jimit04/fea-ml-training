@@ -283,7 +283,7 @@ requires-dist = [
     { name = "pyvista", specifier = ">=0.46.5" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "sympy", specifier = ">=1.14.0" },
-    { name = "tensorflow", specifier = ">=2.20.0" },
+    { name = "tensorflow", extras = ["gpu"], specifier = ">=2.20.0" },
     { name = "torch", specifier = ">=2.10.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "vtk", specifier = ">=9.5.2" },

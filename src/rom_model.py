@@ -175,7 +175,7 @@ def build_gcn(input_dim: int, output_dim: int, A_hat: np.ndarray) -> keras.Model
 # ROMTrainer
 # ─────────────────────────────────────────────
 class ROMTrainer:
-    def __init__(self, data_dir="mock_data", model_dir="models", model_type="mlp"):
+    def __init__(self, data_dir="mock_data", model_dir="models", model_type="gcn"):
         self.data_dir   = data_dir
         self.model_dir  = model_dir
         self.model_type = model_type.lower()
@@ -264,7 +264,7 @@ class ROMTrainer:
             train_in, y_train,
             validation_data=(test_in, y_test),
             epochs=300,
-            batch_size=min(32, len(y_train)),
+            batch_size=min(64, len(y_train)),
             callbacks=self._callbacks(),
             verbose=1,
         )

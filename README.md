@@ -32,7 +32,7 @@ uv sync
 uv run .\main.py
 
 # Generate 500 samples
-uv run .\main.py --generate --samples 500
+uv run main.py --generate --samples 500 --sampling "taguchi"
 
 # Train with MLP (default)
 uv run .\main.py --train --model mlp
@@ -49,26 +49,30 @@ uv run .\main.py --visualize --screenshot output.png
 
 ### Arguments
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--generate` | Generate synthetic dataset | — |
-| `--train` | Train the ROM model | — |
-| `--visualize` | Launch 3D visualizer | — |
-| `--samples N` | Number of samples to generate | 500 |
-| `--model` | Model type: `mlp` or `gcn` | `mlp` |
-| `--screenshot PATH` | Save screenshot instead of opening window | — |
+| Argument              | Description                               | Default |
+| --------------------- | ----------------------------------------- | ------- |
+| `--generate`        | Generate synthetic dataset                | —      |
+| `--train`           | Train the ROM model                       | —      |
+| `--visualize`       | Launch 3D visualizer                      | —      |
+| `--samples N`       | Number of samples to generate             | 500     |
+| `--model`           | Model type:`mlp` or `gcn`             | `mlp` |
+| `--screenshot PATH` | Save screenshot instead of opening window | —      |
 
 ---
 
 ## Models
 
 ### MLP (Multi-Layer Perceptron)
+
 Deep Dense network: `4 → 256 → 512 → 512 → 256 → output`
+
 - Swish activations, BatchNorm, Dropout
 - ~723,700 parameters
 
 ### GCN (Graph Convolutional Network)
+
 Treats the beam mesh as a graph. Performs spectral convolution over the 21×6×6 node adjacency.
+
 - 3 GCN layers (64 → 128 → 64), global average pool, Dense decoder head
 - ~554,900 parameters
 
@@ -76,12 +80,12 @@ Treats the beam mesh as a graph. Performs spectral convolution over the 21×6×6
 
 ## Inputs & Physics
 
-| Parameter | Symbol | Unit | Range |
-|-----------|--------|------|-------|
-| Length | L | mm | 5 – 20 |
-| Width  | w | mm | 0.5 – 3 |
-| Depth  | d | mm | 0.1 – 0.5 |
-| Load   | P | N  | 1,000 – 50,000 |
+| Parameter | Symbol | Unit | Range           |
+| --------- | ------ | ---- | --------------- |
+| Length    | L      | mm   | 5 – 20         |
+| Width     | w      | mm   | 0.5 – 3        |
+| Depth     | d      | mm   | 0.1 – 0.5      |
+| Load      | P      | N    | 1,000 – 50,000 |
 
 **Material:** Steel — E = 210,000 MPa, ν = 0.29
 
