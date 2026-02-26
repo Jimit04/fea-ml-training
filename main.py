@@ -23,7 +23,8 @@ def main():
     parser = argparse.ArgumentParser(description="FEA ROM Workflow POC")
     parser.add_argument("--generate", action="store_true", help="Generate synthetic data")
     parser.add_argument("--train", action="store_true", help="Train ROM model")
-    parser.add_argument("--visualize", action="store_true", help="Visualize results")
+    parser.add_argument("--visualize_model", action="store_true", help="Visualize results")
+    parser.add_argument("--visualize_data", action="store_true", help="Visualize input data (point cloud)")
     parser.add_argument("--samples", type=int, default=500, help="Number of samples to generate")
     parser.add_argument("--sampling", type=str, default="lhc", choices=["random", "lhs", "sobol", "taguchi"], help="Sampling strategy for data generation")
     parser.add_argument("--screenshot", type=str, default=None, help="Save screenshot to file instead of showing window")
@@ -32,7 +33,7 @@ def main():
     args = parser.parse_args()
     
     # If no stage flags given, run the full pipeline
-    if not (args.generate or args.train or args.visualize):
+    if not (args.generate or args.train or args.visualize_model or args.visualize_data):
         print("No action specified. Running full workflow: Generate -> Train -> Visualize")
         run_full = True
     else:
@@ -52,7 +53,7 @@ def main():
         trainer.train()
             
     # Stage 3: Visualise predictions vs ground truth
-    if args.visualize or run_full:
+    if args.visualize_model or run_full:
         from src.visualizer import ROMVisualizer
         print("Launching Visualizer...")
         viz = ROMVisualizer(model_dir=os.path.join("models", args.sampling))
@@ -60,6 +61,14 @@ def main():
         l, w, d, load = 12.5, 1.5, 1.5, 250.0
         print(f"Predicting for L={l}, W={w}, Depth={d}, Load={load}")
         viz.predict_and_plot(l, w, d, load, screenshot=args.screenshot)
+
+    # Stage 4: Visualise input data (point cloud)
+    if args.visualize_data or run_full:
+        from src.input_visualizer import PointCloudVisualizer
+        print("Launching Input Data Visualizer...")
+        viz=PointCloudVisualizer(csv_path=os.path.join("mock_data", args.sampling, "design_table.csv"))
+        viz.load_data()
+        viz.plot(symmetric_color_scale=True)
 
 if __name__ == "__main__":
     main()

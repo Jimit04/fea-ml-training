@@ -18,3 +18,4 @@ models
 # Temporary files
 temp_gt
 logs/
+screenshots/
