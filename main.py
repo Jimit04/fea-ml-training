@@ -1,74 +1,44 @@
-"""Command-line entry point for the FEA Reduced-Order Model workflow.
+#%%
+from pathlib import Path
 
-Orchestrates three pipeline stages — data generation, model training, and
-visualisation — which can be invoked individually or as a complete end-to-end
-pipeline via the CLI flags.
-"""
+data_dir = Path("mock_data")
+model_dir = Path("models")
 
-import os
-import argparse
+samplings=["random", "lhs", "sobol", "taguchi"]
 
+#%%
+# Generate datasets for each sampling strategy
+from src.generate_dataset import generate_dataset
+for sampling in samplings:
+    print(f"Generating dataset for {sampling} sampling...")
+    generate_dataset(n_samples=500, sampling=sampling, 
+                     output_dir=data_dir/sampling)
 
-def main():
-    """Parse CLI arguments and run the requested pipeline stages.
+#%%
+# Visualise input data as 3D point cloud for one of the datasets
+from src.input_visualizer import PointCloudVisualizer
+for sampling in samplings:
+    print(f"Visualizing input data for {sampling} sampling...")
+    viz=PointCloudVisualizer(csv_path=data_dir/sampling/"design_table.csv")
+    viz.load_data()
+    viz.plot(symmetric_color_scale=True)
 
-    Stages
-    ------
-    1. **Generate** — Create synthetic FEA samples using ``MockFEASolver``.
-    2. **Train**    — Train a TensorFlow/Keras ROM (MLP or GCN).
-    3. **Visualize** — Render predicted vs. ground-truth fields with PyVista.
+#%%
+# Train models for each sampling strategy
+from src.rom_model import ROMTrainer
+for sampling in samplings:
+    print(f"Training model for {sampling} sampling...")
+    trainer = ROMTrainer(model_type="gcn", data_dir=data_dir/sampling, model_dir=model_dir/sampling)
+    trainer.train()
 
-    If no stage flags are provided, all three stages run sequentially.
-    """
-    parser = argparse.ArgumentParser(description="FEA ROM Workflow POC")
-    parser.add_argument("--generate", action="store_true", help="Generate synthetic data")
-    parser.add_argument("--train", action="store_true", help="Train ROM model")
-    parser.add_argument("--visualize_model", action="store_true", help="Visualize results")
-    parser.add_argument("--visualize_data", action="store_true", help="Visualize input data (point cloud)")
-    parser.add_argument("--samples", type=int, default=500, help="Number of samples to generate")
-    parser.add_argument("--sampling", type=str, default="lhc", choices=["random", "lhs", "sobol", "taguchi"], help="Sampling strategy for data generation")
-    parser.add_argument("--screenshot", type=str, default=None, help="Save screenshot to file instead of showing window")
-    parser.add_argument("--model", type=str, default="gcn", choices=["mlp", "gcn"], help="Model type to train")
-    
-    args = parser.parse_args()
-    
-    # If no stage flags given, run the full pipeline
-    if not (args.generate or args.train or args.visualize_model or args.visualize_data):
-        print("No action specified. Running full workflow: Generate -> Train -> Visualize")
-        run_full = True
-    else:
-        run_full = False
-        
-    # Stage 1: Generate data
-    if args.generate or run_full:
-        from src.generate_dataset import generate_dataset
-        generate_dataset(n_samples=args.samples, sampling=args.sampling)
+#%%
+# Visualise predictions vs ground truth for each model
+from src.visualizer import ROMVisualizer
+for sampling in samplings:
+    print(f"Visualizing model for {sampling} sampling...")
+    viz = ROMVisualizer(model_dir=model_dir/sampling)
+    l, w, d, load = 10, 1.5, 1.5, 200.0
+    viz.predict_and_plot(l, w, d, load)
 
-            
-    # Stage 2: Train model
-    if args.train or run_full:
-        from src.rom_model import ROMTrainer
-        print(f"Training Model ({args.model})...")
-        trainer = ROMTrainer(model_type=args.model, data_dir=os.path.join("mock_data", args.sampling), model_dir=os.path.join("models", args.sampling))
-        trainer.train()
-            
-    # Stage 3: Visualise predictions vs ground truth
-    if args.visualize_model or run_full:
-        from src.visualizer import ROMVisualizer
-        print("Launching Visualizer...")
-        viz = ROMVisualizer(model_dir=os.path.join("models", args.sampling))
-        # Static demo with fixed parameters
-        l, w, d, load = 12.5, 1.5, 1.5, 250.0
-        print(f"Predicting for L={l}, W={w}, Depth={d}, Load={load}")
-        viz.predict_and_plot(l, w, d, load, screenshot=args.screenshot)
-
-    # Stage 4: Visualise input data (point cloud)
-    if args.visualize_data or run_full:
-        from src.input_visualizer import PointCloudVisualizer
-        print("Launching Input Data Visualizer...")
-        viz=PointCloudVisualizer(csv_path=os.path.join("mock_data", args.sampling, "design_table.csv"))
-        viz.load_data()
-        viz.plot(symmetric_color_scale=True)
-
-if __name__ == "__main__":
-    main()
+# %%
+# Play here with different input parameters to see how predictions change

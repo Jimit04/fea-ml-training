@@ -29,40 +29,10 @@ uv sync
 ## Usage
 
 ```bash
-# Full pipeline (generate → train → visualize)
-uv run .\main.py
+# Check for full help on usage
+uv run .\main.py --help
 
-# Generate 500 samples with a specific sampling strategy
-uv run main.py --generate --samples 500 --sampling taguchi
-
-# Train with MLP
-uv run .\main.py --train --model mlp
-
-# Train with GCN (default)
-uv run .\main.py --train --model gcn
-
-# Visualize predictions vs ground truth
-uv run .\main.py --visualize
-
-# Save visualization to file
-uv run .\main.py --visualize --screenshot output.png
 ```
-
-### Arguments
-
-| Argument             | Description                                          | Default   |
-| -------------------- | ---------------------------------------------------- | --------- |
-| `--generate`         | Generate synthetic dataset                           | —         |
-| `--train`            | Train the ROM model                                  | —         |
-| `--visualize`        | Launch 3D visualizer                                 | —         |
-| `--samples N`        | Number of samples to generate                        | `500`     |
-| `--sampling`         | Sampling strategy: `random`, `lhs`, `sobol`, `taguchi` | `lhs`   |
-| `--model`            | Model type: `mlp` or `gcn`                           | `gcn`     |
-| `--screenshot PATH`  | Save screenshot instead of opening window            | —         |
-
-> If no stage flags (`--generate`, `--train`, `--visualize`) are provided, the full pipeline runs end-to-end.
-
----
 
 ## Models
 
@@ -86,12 +56,12 @@ Treats the beam mesh as a graph. Performs spectral convolution over the 21×6×6
 
 ## Inputs & Physics
 
-| Parameter | Symbol | Unit | Range          |
-| --------- | ------ | ---- | -------------- |
-| Length    | L      | mm   | 5 – 20         |
-| Width     | w      | mm   | 1 – 3          |
-| Depth     | d      | mm   | 1 – 3          |
-| Load      | P      | N    | -500 – 500     |
+| Parameter | Symbol | Unit | Range       |
+| --------- | ------ | ---- | ----------- |
+| Length    | L      | mm   | 5 – 20     |
+| Width     | w      | mm   | 1 – 3      |
+| Depth     | d      | mm   | 1 – 3      |
+| Load      | P      | N    | -500 – 500 |
 
 **Material:** Steel — E = 210,000 MPa, ν = 0.29
 
