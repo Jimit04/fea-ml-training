@@ -40,7 +40,7 @@ class ROMTrainer:
         data_dir : str, optional
             Directory containing the training data (default ``"mock_data"``).
         model_dir : str, optional
-            Directory for saving trained artefacts (default ``"models"``).
+            Directory for saving trained artifacts (default ``"models"``).
         model_type : str, optional
             Model architecture — ``"mlp"`` or ``"gcn"`` (default ``"gcn"``).
 
@@ -97,7 +97,7 @@ class ROMTrainer:
                np.array(Y_stress, dtype=np.float32)
 
     # ── Training callbacks ─────────────────────
-    def _callbacks(self, monitor="val_loss", patience=20, log_dir="logs"):
+    def _callbacks(self, monitor="val_loss", patience=100, log_dir="logs"):
         """Build the list of Keras training callbacks.
 
         Includes ``EarlyStopping``, ``ReduceLROnPlateau``, and a
@@ -106,11 +106,11 @@ class ROMTrainer:
         Parameters
         ----------
         monitor : str, optional
-            Metric to monitor (default ``"val_loss"``).
+            Metric to monitor.
         patience : int, optional
-            Early-stopping patience in epochs (default ``20``).
+            Early-stopping patience in epochs.
         log_dir : str, optional
-            Root directory for TensorBoard logs (default ``"logs"``).
+            Root directory for TensorBoard logs.
 
         Returns
         -------
@@ -139,8 +139,8 @@ class ROMTrainer:
             keras.callbacks.ReduceLROnPlateau(
                 monitor=monitor,
                 factor=0.5,
-                patience=10,
-                min_lr=1e-6,
+                patience=20,
+                min_lr=1e-7,
                 verbose=1
             ),
             tensorboard_cb
@@ -190,8 +190,8 @@ class ROMTrainer:
         history = model.fit(
             train_in, y_train,
             validation_data=(val_in, y_val),
-            epochs=300,
-            batch_size=min(64, len(y_train)),
+            epochs=1500,
+            batch_size=min(16, len(y_train)),
             callbacks=self._callbacks(),
             verbose=1,
         )

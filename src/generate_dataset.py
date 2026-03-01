@@ -49,8 +49,6 @@ def generate_dataset(
     - Depth  : 1.0 – 3.0 mm
     - Load   : -500.0 – 500.0 N
     """
-    output_dir = os.path.join(output_dir, sampling)
-
     if not os.path.exists(output_dir) or len(os.listdir(output_dir)) == 0:
         print("Generating Data...")
     else:
@@ -63,10 +61,10 @@ def generate_dataset(
 
     # Parameter ranges (min, max)
     param_ranges = {
-        "length": (5.0, 20.0),
-        "width": (1.0, 3.0),
-        "depth": (1.0, 3.0),
-        "load": (-500.0, 500.0)
+        "length": (100.0, 200.0),
+        "width": (20.0, 50.0),
+        "depth": (10.0, 20.0),
+        "load": (0.0, 500.0)
     }
 
     param_names = list(param_ranges.keys())

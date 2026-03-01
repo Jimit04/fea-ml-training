@@ -7,13 +7,14 @@
 ---
 
 ## Table of Contents
+
 1. [Problem Statement](#1-problem-statement)
-2. [Dataset & Physics](#2-dataset--physics)
+2. [Dataset &amp; Physics](#2-dataset--physics)
 3. [Data Preprocessing](#3-data-preprocessing)
 4. [Model 1 — MLP (Multi-Layer Perceptron)](#4-model-1--mlp-multi-layer-perceptron)
 5. [Model 2 — GCN (Graph Convolutional Network)](#5-model-2--gcn-graph-convolutional-network)
 6. [Training Strategy](#6-training-strategy)
-7. [Evaluation & Visualisation](#7-evaluation--visualisation)
+7. [Evaluation &amp; Visualisation](#7-evaluation--visualisation)
 8. [How to Run](#8-how-to-run)
 
 ---
@@ -23,12 +24,12 @@
 A cantilever beam is fixed at one end (x = 0) and has a point load **P** applied at the free tip (x = L).
 Given four input parameters:
 
-| Symbol | Name | Unit | Range |
-|--------|------|------|-------|
-| L | Length | mm | 5 – 20 |
-| w | Width  | mm | 1 – 3 |
-| d | Depth  | mm | 1 – 3 |
-| P | Load   | N  | -500 – 500 |
+| Symbol | Name   | Unit | Range       |
+| ------ | ------ | ---- | ----------- |
+| L      | Length | mm   | 5 – 20     |
+| w      | Width  | mm   | 1 – 3      |
+| d      | Depth  | mm   | 1 – 3      |
+| P      | Load   | N    | -500 – 500 |
 
 We want to predict the **full displacement field** (a 3D vector at every mesh node) and the
 **full stress field** (σ_xx at every mesh node) — without running a traditional FEA solver.
@@ -58,16 +59,19 @@ E  = 210,000 MPa   (Young's Modulus)
 ```
 
 **Moment of Inertia** for a rectangular cross-section:
+
 ```
 I = (w × d³) / 12
 ```
 
 **Vertical displacement** at any point x along the beam (cantilever, tip load P):
+
 ```
 v(x) = - (P × x²) / (6 × E × I) × (3L - x)
 ```
 
 **Bending stress** σ_xx (tension at top surface z > 0, compression at bottom z < 0):
+
 ```
 M(x)     = P × (L - x)         ← Bending moment at position x
 σ_xx(x,z) = M(x) × z / I
@@ -77,6 +81,7 @@ M(x)     = P × (L - x)         ← Bending moment at position x
 > and zero at the free tip. The top surface (z > 0) is in tension, the bottom (z < 0) is in compression.
 
 Each sample is saved as:
+
 - `sample_N_params.npy`  — `[L, w, d, P]`
 - `sample_N_disp.npy`    — shape `(756, 3)` displacement vectors
 - `sample_N_stress.npy`  — shape `(756,)` σ_xx at every node
@@ -135,31 +140,40 @@ Dense(output_dim)          ← output_dim = 2268 for displacement, 756 for stres
 ### 4.3 Building Blocks Explained
 
 #### Dense Layer
+
 Performs the linear transformation:
+
 ```
 y = x W + b
 ```
+
 - `x` — input vector of shape (batch, in_features)
 - `W` — weight matrix of shape (in_features, out_features),  *learned*
 - `b` — bias vector of shape (out_features),  *learned*
 - `y` — output of shape (batch, out_features)
 
 #### Batch Normalisation
+
 After each Dense layer, we normalise the activations within a mini-batch:
+
 ```
 x̂ = (x - μ_batch) / √(σ²_batch + ε)
 y  = γ × x̂ + β
 ```
+
 This keeps activations from exploding or vanishing, and allows higher learning rates.
 
 #### Swish / SiLU Activation
+
 ```
 Swish(x) = x × sigmoid(x) = x / (1 + e^{-x})
 ```
+
 Unlike ReLU (which hard-clips negatives to 0), Swish is smooth everywhere and allows
 small negative values to pass through, which tends to give better gradient flow in deep networks.
 
 #### Dropout
+
 During training, randomly sets a fraction (here 15%) of neuron outputs to **zero**.
 This forces the network not to rely on any single neuron and acts as regularisation,
 reducing overfitting.
@@ -204,11 +218,13 @@ its own information during aggregation.
 #### Symmetric Normalisation
 
 Raw adjacency A is normalised to prevent scale issues:
+
 ```
 Â = D^{-1/2} (A + I) D^{-1/2}
 
 where D is the diagonal degree matrix:  D_{ii} = Σ_j A_{ij}
 ```
+
 This ensures that nodes with many neighbours don't dominate the aggregation.
 Â has all eigenvalues in [-1, 1], keeping gradients stable.
 
@@ -226,6 +242,7 @@ H'      = activation(H')
 ```
 
 Each GCN layer:
+
 1. **Transforms** each node's features with a weight matrix W
 2. **Aggregates** features from all neighbours (via Â matrix multiplication)
 3. **Activates** the result non-linearly (ReLU)
@@ -260,13 +277,13 @@ Step 4 — Decode to output field:
 
 ### 5.5 Why GCN might outperform MLP
 
-| Aspect | MLP | GCN |
-|--------|-----|-----|
-| Exploits mesh topology | ✗ | ✓ |
-| Parameter count | Higher | Lower |
-| Generalises to new meshes | ✗ | ✓ (with same connectivity) |
-| Training speed | Faster | Slower |
-| Interpretability | Black-box | Node-level features inspectable |
+| Aspect                    | MLP       | GCN                             |
+| ------------------------- | --------- | ------------------------------- |
+| Exploits mesh topology    | ✗        | ✓                              |
+| Parameter count           | Higher    | Lower                           |
+| Generalises to new meshes | ✗        | ✓ (with same connectivity)     |
+| Training speed            | Faster    | Slower                          |
+| Interpretability          | Black-box | Node-level features inspectable |
 
 > **Note:** Because we're still using a *fixed* `21×6×6` mesh and the physics is smooth,
 > the MLP often performs competitively with the GCN at this scale.
@@ -280,14 +297,18 @@ Step 4 — Decode to output field:
 Both models are trained **separately** for displacement and stress:
 
 ### 6.1 Loss Function
+
 ```
 MSE = (1/N) × Σ (ŷ_i - y_i)²
 ```
+
 Mean Squared Error penalises large errors more than small ones, which is appropriate
 for regression over physical fields.
 
 ### 6.2 Optimiser: Adam
+
 Adam (Adaptive Moment Estimation) maintains per-parameter learning rates:
+
 ```
 m_t = β₁ × m_{t-1} + (1 - β₁) × ∇L   ← first moment (mean)
 v_t = β₂ × v_{t-1} + (1 - β₂) × ∇L²  ← second moment (variance)
@@ -299,23 +320,26 @@ Default: α=0.001, β₁=0.9, β₂=0.999
 ### 6.3 Callbacks
 
 #### Early Stopping
-Monitors validation loss. If it does not improve for **20 consecutive epochs**,
+
+Monitors validation loss. If it does not improve for 500 **consecutive epochs**,
 training stops and the best weights are restored. This prevents overfitting.
 
 #### ReduceLROnPlateau
+
 If validation loss doesn't improve for **10 epochs**, the learning rate is halved
 (`factor=0.5`). This allows the optimiser to make smaller, more precise updates
 as it approaches a minimum.
 
 ```
-Epoch 1:   LR = 0.001
-Epoch 50:  LR = 0.001  (improving)
-Epoch 60:  LR = 0.0005 (plateau detected → halved)
-Epoch 70:  LR = 0.00025
+Epoch 1:   LR = 0.0001
+Epoch 50:  LR = 0.0001  (improving)
+Epoch 60:  LR = 0.00005 (plateau detected → halved)
+Epoch 70:  LR = 0.000025
 ...
 ```
 
 ### 6.4 Train / Test Split
+
 - **80%** training samples
 - **20%** held-out test samples (never seen during training)
 - `random_state=42` for reproducibility
@@ -325,12 +349,14 @@ Epoch 70:  LR = 0.00025
 ## 7. Evaluation & Visualisation
 
 ### 7.1 Metrics
+
 - **Test MSE** — Mean Squared Error on the held-out set
 - **Test MAE** — Mean Absolute Error (easier to interpret in physical units)
 
 ### 7.2 Visualiser
 
 The `ROMVisualizer` class:
+
 1. Loads saved `.keras` models and `.npy` scalers
 2. Normalises the input `[L, w, d, P]` using saved μ / σ
 3. Runs the model to predict displacement and stress fields
@@ -351,35 +377,11 @@ Stress Error (%) = |max_pred_stress - max_gt_stress| / max_gt_stress × 100
 Errors below **10%** are generally acceptable for engineering ROM applications.
 To improve accuracy: train on more samples (≥ 1000) and train for more epochs.
 
----
-
-## 8. How to Run
-
-```bash
-# 1. Generate 500 training samples (with LHS sampling)
-uv run .\main.py --generate --samples 500 --sampling lhs
-
-# 2. Train with MLP
-uv run .\main.py --train --model mlp
-
-# 3. Train with GCN (default)
-uv run .\main.py --train --model gcn
-
-# 4. Visualise (uses the last trained model)
-uv run .\main.py --visualize
-
-# 5. Run entire pipeline at once
-uv run .\main.py --generate --train --visualize --samples 500 --sampling taguchi --model gcn
-
-# Save a screenshot instead of opening a window
-uv run .\main.py --visualize --screenshot output.png
-```
-
 ### File Structure
 
 ```
 fea-ml-training/
-├── main.py                    ← Entry point, CLI
+├── main.py                    ← Entry point, notebook style
 ├── docs/
 │   ├── Overview.md            ← This file
 │   └── GCNs.md                ← GCN deep-dive reference

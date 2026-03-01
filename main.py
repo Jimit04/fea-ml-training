@@ -11,8 +11,8 @@ samplings=["random", "lhs", "sobol", "taguchi"]
 from src.generate_dataset import generate_dataset
 for sampling in samplings:
     print(f"Generating dataset for {sampling} sampling...")
-    generate_dataset(n_samples=500, sampling=sampling, 
-                     output_dir=data_dir/sampling)
+    generate_dataset(n_samples=600, sampling=sampling, 
+                     output_dir=data_dir/sampling, taguchi_levels=4)
 
 #%%
 # Visualise input data as 3D point cloud for one of the datasets
@@ -37,7 +37,7 @@ from src.visualizer import ROMVisualizer
 for sampling in samplings:
     print(f"Visualizing model for {sampling} sampling...")
     viz = ROMVisualizer(model_dir=model_dir/sampling)
-    l, w, d, load = 10, 1.5, 1.5, 200.0
+    l, w, d, load = 180, 25, 12, 400.0
     viz.predict_and_plot(l, w, d, load)
 
 # %%
