@@ -34,11 +34,12 @@ for sampling in samplings:
 #%%
 # Visualise predictions vs ground truth for each model
 from src.visualizer import ROMVisualizer
+Path(f"screenshots").mkdir(exist_ok=True)
 for sampling in samplings:
     print(f"Visualizing model for {sampling} sampling...")
     viz = ROMVisualizer(model_dir=model_dir/sampling)
     l, w, d, load = 180, 25, 12, 400.0
-    viz.predict_and_plot(l, w, d, load)
+    viz.predict_and_plot(l, w, d, load, screenshot=Path(f"screenshots/predictions_{sampling}.png"))
 
 # %%
 # Play here with different input parameters to see how predictions change
