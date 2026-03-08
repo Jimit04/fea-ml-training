@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from src.rom_model.adjacency import build_beam_adjacency
-from src.rom_model.architectures import build_mlp, build_gcn
+from src.rom_model.architectures import build_mlp, build_gcn, build_transformer
 
 
 class ROMTrainer:
@@ -29,7 +29,7 @@ class ROMTrainer:
     model_dir : str
         Path where trained models and scaler arrays are saved.
     model_type : str
-        Either ``"mlp"`` or ``"gcn"``.
+        Either ``"mlp"``, ``"gcn"``, or ``"transformer"``.
     """
 
     def __init__(self, data_dir="mock_data", model_dir="models", model_type="gcn"):
@@ -42,20 +42,20 @@ class ROMTrainer:
         model_dir : str, optional
             Directory for saving trained artifacts (default ``"models"``).
         model_type : str, optional
-            Model architecture — ``"mlp"`` or ``"gcn"`` (default ``"gcn"``).
+            Model architecture — ``"mlp"``, ``"gcn"``, or ``"transformer"`` (default ``"gcn"``).
 
         Raises
         ------
         ValueError
-            If *model_type* is not ``"mlp"`` or ``"gcn"``.
+            If *model_type* is not ``"mlp"``, ``"gcn"``, or ``"transformer"``.
         """
         self.data_dir   = data_dir
         self.model_dir  = model_dir
         self.model_type = model_type.lower()
         os.makedirs(self.model_dir, exist_ok=True)
 
-        if self.model_type not in ("mlp", "gcn"):
-            raise ValueError(f"Unknown model_type '{self.model_type}'. Choose 'mlp' or 'gcn'.")
+        if self.model_type not in ("mlp", "gcn", "transformer"):
+            raise ValueError(f"Unknown model_type '{self.model_type}'. Choose 'mlp', 'gcn', or 'transformer'.")
 
         # Precompute adjacency matrix (used only by GCN, but cheap to build)
         self._A_hat = build_beam_adjacency(nx=21, ny=6, nz=6)  # (756, 756)
@@ -179,9 +179,15 @@ class ROMTrainer:
         if self.model_type == "mlp":
             model = build_mlp(input_dim=X_train_s.shape[1], output_dim=output_dim)
             train_in, val_in, test_in = X_train_s, X_val_s, X_test_s
-        else:  # gcn
+        elif self.model_type == "gcn":
             model = build_gcn(input_dim=X_train_s.shape[1], output_dim=output_dim,
                                A_hat=self._A_hat)
+            train_in = self._gcn_inputs(X_train_s)
+            val_in   = self._gcn_inputs(X_val_s)
+            test_in  = self._gcn_inputs(X_test_s)
+        else:  # transformer
+            model = build_transformer(input_dim=X_train_s.shape[1], output_dim=output_dim,
+                                      A_hat=self._A_hat)
             train_in = self._gcn_inputs(X_train_s)
             val_in   = self._gcn_inputs(X_val_s)
             test_in  = self._gcn_inputs(X_test_s)
