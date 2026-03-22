@@ -184,7 +184,7 @@ class ROMVisualizer:
 
         # Render side-by-side comparison
         pl = pv.Plotter(shape=(1, 2), off_screen=(screenshot is not None))
-
+        pl.enable_parallel_projection()
         # Left panel: ROM prediction
         pl.subplot(0, 0)
         pred_title = (
