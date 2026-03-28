@@ -1,0 +1,8 @@
+{
+  "r2_displacement": 0.31139054894447327,
+  "r2_stress": 0.9114549160003662,
+  "model_type": "gcn",
+  "n_train": 480,
+  "n_test": 90,
+  "n_val": 30
+}

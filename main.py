@@ -36,7 +36,7 @@ for sampling in samplings:
         # Visualise predictions vs ground truth for each model
         print(f"Visualizing {model_type} model for {sampling} sampling...")
         viz = ROMVisualizer(model_dir=model_dir/model_type/sampling)
-        l, w, d, load = 180, 25, 12, 400.0
+        l, w, d, load = 280, 25, 12, 900.0
         viz.predict_and_plot(l, w, d, load, screenshot=Path(f"screenshots/predictions_{model_type}_{sampling}.png"))
 
 # %%
@@ -56,9 +56,9 @@ for sampling in samplings:
 
 # from src.visualizer import ROMVisualizer
 # viz = ROMVisualizer(model_dir=model_dir/model_type/sampling)
-#         # "length": (100.0, 200.0),
+#         # "length": (100.0, 500.0),
 #         # "width": (20.0, 50.0),
 #         # "depth": (10.0, 20.0),
-#         # "load": (0.0, 500.0)
-# l, w, d, load = 180, 25, 12, 400.0
+#         # "load": (100.0, 1000.0)
+# l, w, d, load = 280, 25, 12, 900.0
 # viz.predict_and_plot(l, w, d, load)

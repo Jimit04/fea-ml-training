@@ -61,10 +61,10 @@ def generate_dataset(
 
     # Parameter ranges (min, max)
     param_ranges = {
-        "length": (100.0, 200.0),
+        "length": (100.0, 500.0),
         "width": (20.0, 50.0),
         "depth": (10.0, 20.0),
-        "load": (0.0, 500.0)
+        "load": (100.0, 1000.0)
     }
 
     param_names = list(param_ranges.keys())
