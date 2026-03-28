@@ -97,7 +97,7 @@ class ROMTrainer:
                np.array(Y_stress, dtype=np.float32)
 
     # ── Training callbacks ─────────────────────
-    def _callbacks(self, monitor="val_loss", patience=100, log_dir="logs"):
+    def _callbacks(self, monitor="val_loss", patience=50, log_dir="logs"):
         """Build the list of Keras training callbacks.
 
         Includes ``EarlyStopping``, ``ReduceLROnPlateau``, and a
@@ -196,7 +196,7 @@ class ROMTrainer:
         history = model.fit(
             train_in, y_train,
             validation_data=(val_in, y_val),
-            epochs=2,
+            epochs=1000,
             batch_size=min(16, len(y_train)),
             callbacks=self._callbacks(),
             verbose=1,
