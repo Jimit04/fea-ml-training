@@ -41,14 +41,23 @@ class ROMVisualizer:
             ``scaler_mean.npy``, ``scaler_std.npy``, and ``model_type.npy``
             (default ``"models"``).
         """
+        custom_objs = {
+            "GCNLayer": GCNLayer,
+            "PositionalEmbedding": PositionalEmbedding
+        }
+
         # Load Keras models (compile=False since we only need inference)
         self.model_disp   = keras.models.load_model(
             os.path.join(model_dir, "rom_disp.keras"),
-            compile=False
+            compile=False,
+            custom_objects=custom_objs,
+            safe_mode=False
         )
         self.model_stress = keras.models.load_model(
             os.path.join(model_dir, "rom_stress.keras"),
-            compile=False
+            compile=False,
+            custom_objects=custom_objs,
+            safe_mode=False
         )
 
         # Load saved scaler statistics (mean and std from training set)
@@ -108,9 +117,9 @@ class ROMVisualizer:
         np.ndarray or list[np.ndarray]
             Model-ready input(s).
         """
-        if self.model_type == "mlp":
+        if self.model_type in ("mlp", "transformer"):
             return params_s
-        # GCN/Transformer: add adjacency as second input with batch dim
+        # GCN: add adjacency as second input with batch dim
         A_batch = self._A_hat[np.newaxis]   # (1, N, N)
         return [params_s, A_batch]
 

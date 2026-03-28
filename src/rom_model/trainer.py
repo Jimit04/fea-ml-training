@@ -188,15 +188,15 @@ class ROMTrainer:
         else:  # transformer
             model = build_transformer(input_dim=X_train_s.shape[1], output_dim=output_dim,
                                       A_hat=self._A_hat)
-            train_in = self._gcn_inputs(X_train_s)
-            val_in   = self._gcn_inputs(X_val_s)
-            test_in  = self._gcn_inputs(X_test_s)
+            train_in = X_train_s
+            val_in   = X_val_s
+            test_in  = X_test_s
 
         print(model.summary())
         history = model.fit(
             train_in, y_train,
             validation_data=(val_in, y_val),
-            epochs=1500,
+            epochs=2,
             batch_size=min(16, len(y_train)),
             callbacks=self._callbacks(),
             verbose=1,

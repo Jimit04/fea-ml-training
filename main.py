@@ -3,7 +3,7 @@ from pathlib import Path
 
 data_dir = Path("mock_data")
 model_dir = Path("models")
-model_types = ["gcn", "transformer"] 
+model_types = ["transformer"] 
 samplings=["random", "lhs", "sobol"] # taguchi for testing
 
 #%%

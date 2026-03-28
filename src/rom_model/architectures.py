@@ -128,7 +128,10 @@ class PositionalEmbedding(layers.Layer):
         super().__init__(**kwargs)
         self.max_seq_len = max_seq_len
         self.embed_dim = embed_dim
-        self.embedding = layers.Embedding(input_dim=max_seq_len, output_dim=embed_dim)
+
+    def build(self, input_shape):
+        self.embedding = layers.Embedding(input_dim=self.max_seq_len, output_dim=self.embed_dim)
+        super().build(input_shape)
 
     def call(self, inputs):
         # inputs shape: (B, N, F)
@@ -175,9 +178,8 @@ def build_transformer(input_dim: int, output_dim: int, A_hat: np.ndarray) -> ker
     """
     N = A_hat.shape[0]  # e.g., 756
     
-    # Inputs: Keep a_inp to match the same API as GCN for the trainer
+    # Inputs:
     params_inp = keras.Input(shape=(input_dim,), name="params")   # (B, 4)
-    a_inp      = keras.Input(shape=(N, N), name="A_hat")          # (B, N, N)
 
     # 1. Lift global params → per-node feature matrix
     broadcast = layers.RepeatVector(N)(params_inp)              # (B, N, 4)
@@ -212,20 +214,7 @@ def build_transformer(input_dim: int, output_dim: int, A_hat: np.ndarray) -> ker
     h = layers.Dense(512, activation="swish")(h)
     out = layers.Dense(output_dim, name="output")(h)
 
-    # To satisfy Keras Functional API, ALL inputs must be connected to outputs.
-    # Since we are not using `a_inp` in the Transformer, we create a dummy connection
-    # that has no effect on the target output, but keeps the graph connected.
-    dummy = layers.Lambda(lambda x: 0.0 * keras.ops.sum(x, axis=[1, 2]))(a_inp)
-    dummy = layers.Reshape((1,))(dummy)
-    
-    # Broadcast dummy to out shape
-    dummy_broadcast = layers.Lambda(lambda x: keras.ops.tile(x[0], [1, keras.ops.shape(x[1])[1]]))(
-        [dummy, out]
-    )
-    
-    out = layers.Add()([out, dummy_broadcast])
-
-    model = keras.Model(inputs=[params_inp, a_inp], outputs=out, name="Transformer_ROM")
+    model = keras.Model(inputs=params_inp, outputs=out, name="Transformer_ROM")
     model.compile(
         optimizer=keras.optimizers.Adam(learning_rate=1e-3),
         loss="mse",
