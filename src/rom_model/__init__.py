@@ -10,7 +10,7 @@ All public symbols are re-exported here so existing imports like
 
 from src.rom_model.layers import GCNLayer
 from src.rom_model.adjacency import build_beam_adjacency
-from src.rom_model.architectures import build_mlp, build_gcn
+from src.rom_model.architectures import build_mlp, build_gcn, build_transformer, PositionalEmbedding 
 from src.rom_model.trainer import ROMTrainer
 
 __all__ = [
@@ -18,5 +18,7 @@ __all__ = [
     "build_beam_adjacency",
     "build_mlp",
     "build_gcn",
+    "build_transformer",
+    "PositionalEmbedding",
     "ROMTrainer",
 ]

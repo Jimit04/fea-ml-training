@@ -10,7 +10,7 @@ import json
 import os
 import keras
 from src.data_generator import MockFEASolver
-from src.rom_model import build_beam_adjacency, GCNLayer  # GCNLayer import registers the custom layer for Keras deserialization
+from src.rom_model import build_beam_adjacency, GCNLayer, PositionalEmbedding  # GCNLayer import registers the custom layer for Keras deserialization
 
 
 class ROMVisualizer:
@@ -26,7 +26,7 @@ class ROMVisualizer:
     model_stress : keras.Model
         Loaded stress model.
     model_type : str
-        ``"mlp"`` or ``"gcn"``.
+        ``"gcn"`` or ``"transformer"``.
     nx, ny, nz : int
         Mesh resolution (must match ``MockFEASolver``).
     """
@@ -63,7 +63,7 @@ class ROMVisualizer:
         self.nx, self.ny, self.nz = 21, 6, 6
 
         # Build adjacency matrix for GCN inference
-        if self.model_type == "gcn":
+        if self.model_type in ("gcn", "transformer"):
             self._A_hat = build_beam_adjacency(self.nx, self.ny, self.nz)
 
         # Load training metrics (R² scores) if available
@@ -110,7 +110,7 @@ class ROMVisualizer:
         """
         if self.model_type == "mlp":
             return params_s
-        # GCN: add adjacency as second input with batch dim
+        # GCN/Transformer: add adjacency as second input with batch dim
         A_batch = self._A_hat[np.newaxis]   # (1, N, N)
         return [params_s, A_batch]
 

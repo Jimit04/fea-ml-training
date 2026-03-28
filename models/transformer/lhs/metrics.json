@@ -1,6 +1,6 @@
 {
-  "r2_displacement": 0.3139587640762329,
-  "r2_stress": 0.9129217863082886,
+  "r2_displacement": 0.3141738772392273,
+  "r2_stress": 0.9081912636756897,
   "model_type": "transformer",
   "n_train": 480,
   "n_test": 90,

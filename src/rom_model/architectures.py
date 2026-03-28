@@ -121,7 +121,7 @@ def build_gcn(input_dim: int, output_dim: int, A_hat: np.ndarray) -> keras.Model
     )
     return model
 
-
+@keras.saving.register_keras_serializable(name="PositionalEmbedding")
 class PositionalEmbedding(layers.Layer):
     """Simple trainable positional embedding layer."""
     def __init__(self, max_seq_len, embed_dim, **kwargs):
