@@ -114,60 +114,197 @@ Each layer's weight matrix `W` is shared across **all nodes** (analogous to weig
 
 ## 5. GCN in TensorFlow / Keras
 
-Below is a minimal self-contained GCN implementation using TensorFlow:
+The actual implementation in this project uses a **custom `GCNLayer`** registered with Keras for serialisation:
+
+### 5.1 Custom GCNLayer Implementation
 
 ```python
 import tensorflow as tf
-import numpy as np
-import scipy.sparse as sp
+import keras
+from keras import layers
 
-# ── Preprocessing ──────────────────────────────────────────────
-def normalise_adj(A: np.ndarray) -> np.ndarray:
-    """Compute  Â = D̃^{-½} (A + I) D̃^{-½}  as a dense array."""
-    A_tilde = A + np.eye(A.shape[0])
-    D_tilde = np.diag(A_tilde.sum(axis=1))
-    D_inv_sqrt = np.diag(1.0 / np.sqrt(D_tilde.diagonal()))
-    return D_inv_sqrt @ A_tilde @ D_inv_sqrt          # Â
-
-
-# ── Custom Keras Layer ──────────────────────────────────────────
-class GCNLayer(tf.keras.layers.Layer):
-    """A single  H' = σ(Â · H · W)  layer."""
-
-    def __init__(self, units: int, activation=None, **kwargs):
+@keras.saving.register_keras_serializable(package="GCNLayer")
+class GCNLayer(layers.Layer):
+    """Spectral Graph Convolutional Layer.
+    
+    Applies: ``H' = σ(Â @ H @ W + b)``
+    where ``Â`` is the pre-computed symmetrically normalised adjacency matrix.
+    """
+    
+    def __init__(self, units, activation="relu", **kwargs):
+        """Create a GCN layer.
+        
+        Parameters
+        ----------
+        units : int
+            Dimensionality of the output feature space.
+        activation : str or callable, optional
+            Activation function applied after the graph convolution (default "relu").
+        """
         super().__init__(**kwargs)
         self.units = units
-        self.activation = tf.keras.activations.get(activation)
-
+        self.activation = keras.activations.get(activation)
+    
     def build(self, input_shape):
-        # input_shape[0] → H,  input_shape[1] → Â  (ignored for weight shape)
-        F_in = input_shape[0][-1]
+        """Create weight matrix W and bias b.
+        
+        Parameters
+        ----------
+        input_shape : list of TensorShape
+            [H_shape, A_hat_shape] where H_shape = (batch, N, F)
+        """
+        feature_dim = input_shape[0][-1]
         self.W = self.add_weight(
-            name="W", shape=(F_in, self.units),
-            initializer="glorot_uniform", trainable=True
+            name="W",
+            shape=(feature_dim, self.units),
+            initializer="glorot_uniform",
+            trainable=True,
         )
-
+        self.b = self.add_weight(
+            name="b",
+            shape=(self.units,),
+            initializer="zeros",
+            trainable=True,
+        )
+        super().build(input_shape)
+    
     def call(self, inputs):
-        H, A_hat = inputs                    # node features, normalised adj
-        # (N,F)·(F,units) → (N,units) ;  then (N,N)·(N,units)
-        support = tf.matmul(H, self.W)
-        output  = tf.matmul(A_hat, support)
-        return self.activation(output) if self.activation else output
+        """Forward pass: H' = activation(Â @ H @ W + b).
+        
+        Parameters
+        ----------
+        inputs : list of tf.Tensor
+            [H, A_hat] — node features (B, N, F) and normalised adjacency (B, N, N).
+        
+        Returns
+        -------
+        tf.Tensor
+            Updated node features of shape (B, N, units).
+        """
+        H, A_hat = inputs              # H: (batch, N, F), A_hat: (batch, N, N)
+        support = tf.matmul(H, self.W)     # (batch, N, units)
+        output = tf.matmul(A_hat, support) + self.b  # (batch, N, units)
+        return self.activation(output)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "units": self.units,
+            "activation": keras.activations.serialize(self.activation),
+        })
+        return config
+```
 
+### 5.2 Adjacency Matrix Normalisation
 
-# ── Full GCN Model ──────────────────────────────────────────────
-def build_gcn(n_nodes: int, f_in: int, f_out: int) -> tf.keras.Model:
-    H_in    = tf.keras.Input(shape=(f_in,),   name="node_features")   # (N, F_in)
-    A_in    = tf.keras.Input(shape=(n_nodes,), name="adj_matrix")      # (N, N)
+The normalised adjacency **Â** is precomputed once and reused during training/inference:
 
-    h = GCNLayer(64, activation="relu")([H_in, A_in])
-    h = GCNLayer(32, activation="relu")([h,    A_in])
-    out = GCNLayer(f_out)([h, A_in])          # linear output for regression
+```python
+def build_beam_adjacency(nx=21, ny=6, nz=6):
+    """Build normalised adjacency matrix for a structured hex mesh.
+    
+    For a 21 × 6 × 6 grid:
+      N = 21 × 6 × 6 = 756 nodes
+      Two nodes are adjacent if they differ by 1 step along any single axis.
+    
+    Returns Â = D^{-1/2} (A + I) D^{-1/2}
+    """
+    N = nx * ny * nz
+    
+    def idx(i, j, k):
+        return i * ny * nz + j * nz + k
+    
+    rows, cols = [], []
+    # Add self-loops and neighbours
+    for i in range(nx):
+        for j in range(ny):
+            for k in range(nz):
+                n = idx(i, j, k)
+                rows.append(n); cols.append(n)  # self-loop
+                # Check 6 neighbours (±x, ±y, ±z)
+                for di, dj, dk in [(1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)]:
+                    ni, nj, nk = i+di, j+dj, k+dk
+                    if 0 <= ni < nx and 0 <= nj < ny and 0 <= nk < nz:
+                        rows.append(n); cols.append(idx(ni, nj, nk))
+    
+    A = np.zeros((N, N), dtype=np.float32)
+    A[rows, cols] = 1.0
+    
+    # Symmetric normalisation
+    deg = A.sum(axis=1)
+    D_inv_sqrt = np.diag(1.0 / np.sqrt(np.maximum(deg, 1e-9)))
+    A_hat = D_inv_sqrt @ A @ D_inv_sqrt
+    return A_hat.astype(np.float32)
+```
 
-    model = tf.keras.Model(inputs=[H_in, A_in], outputs=out)
-    model.compile(optimizer="adam", loss="mse", metrics=["mae"])
+### 5.3 Full GCN Model Architecture (Production Code)
+
+```python
+def build_gcn(input_dim: int, output_dim: int, A_hat: np.ndarray) -> keras.Model:
+    """Build a GCN-based ROM model.
+    
+    The model receives global scalar parameters [L, w, d, P] and lifts them
+    to per-node features, then performs graph convolution, and finally decodes
+    to the full output field.
+    """
+    N = A_hat.shape[0]  # 756
+    
+    # Inputs
+    params_inp = keras.Input(shape=(input_dim,), name="params")   # (B, 4)
+    a_inp      = keras.Input(shape=(N, N),      name="A_hat")    # (B, N, N)
+    
+    # 1. Lift global params → per-node features
+    broadcast = layers.RepeatVector(N)(params_inp)               # (B, N, 4)
+    node_init = layers.Dense(32, activation="swish")(broadcast)  # (B, N, 32)
+    
+    # 2. GCN message passing (6 layers with alternating activations)
+    x = GCNLayer(128, activation="relu",       name="gcn_1")([node_init, a_inp])
+    x = GCNLayer(128, activation="leaky_relu", name="gcn_2")([x, a_inp])
+    x = GCNLayer(128, activation="relu",       name="gcn_3")([x, a_inp])
+    x = GCNLayer(128, activation="leaky_relu", name="gcn_4")([x, a_inp])
+    x = GCNLayer(128, activation="relu",       name="gcn_5")([x, a_inp])
+    x = GCNLayer(128, activation="leaky_relu", name="gcn_6")([x, a_inp])
+    # x: (B, N, 128)
+    
+    # 3. Global average pool → graph-level summary
+    pooled = layers.GlobalAveragePooling1D()(x)  # (B, 128)
+    
+    # 4. Dense decoder head
+    h = layers.Dense(256, activation="swish")(pooled)
+    h = layers.Dropout(0.1)(h)
+    h = layers.Dense(512, activation="swish")(h)
+    out = layers.Dense(output_dim, name="output")(h)
+    
+    model = keras.Model(inputs=[params_inp, a_inp], outputs=out, name="GCN_ROM")
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+        loss="mse",
+        metrics=["mae"],
+    )
     return model
 ```
+
+### 5.4 Training with ROMTrainer
+
+```python
+from src.rom_model.trainer import ROMTrainer
+
+# Train a GCN model
+trainer = ROMTrainer(
+    data_dir="mock_data/lhs",    # or "random", "sobol", "taguchi"
+    model_dir="models/lhs",
+    model_type="gcn"              # Select GCN architecture
+)
+
+trainer.train()  # Trains displacement and stress models separately
+```
+
+The trainer handles:
+- Loading `.npy` samples
+- 80/15/5 train/test/validation split
+- Input standardisation (preserves scaler for inference)
+- Training with early stopping and learning rate scheduling
+- Saving `.keras` models + scalers for deployment
 
 ---
 
@@ -186,12 +323,79 @@ Because nearby mesh nodes have highly correlated mechanical responses, the neigh
 
 ### Why GCNs outperform MLPs on meshes
 
-| Criterion | MLP | GCN |
-|---|---|---|
-| Uses mesh topology | ❌ (flattens nodes) | ✅ (adjacency matrix) |
-| Permutation invariant | ❌ | ✅ |
-| Generalises to different mesh sizes | ❌ | ✅ |
-| Parameters scale with mesh size | Yes (O(N)) | No (O(F²) per layer) |
+| Criterion | MLP | GCN | Transformer |
+|---|---|---|---|
+| Uses mesh topology | ❌ (flattens nodes) | ✅ (adjacency matrix) | ✅ (self-attention) |
+| Permutation invariant | ❌ | ✅ | ❌ (needs positional encoding) |
+| Generalises to different mesh sizes | ❌ | ✅ | ❌ (fixed N) |
+| Parameters scale with mesh size | Yes (O(N)) | No (O(F²) per layer) | No (O(N²) attention) |
+| Training speed on 756-node mesh | Fastest | Slower | Slowest |
+
+> **In practice:** For the fixed `21×6×6` mesh, all three models train successfully.
+> MLP is fastest but ignores topology. GCN is parameter-efficient and respects mesh structure.
+> Transformer can learn flexible attention patterns but has higher computational cost.
+
+---
+
+## 6. Training GCN Models in This Project
+
+The `ROMTrainer` class in `src/rom_model/trainer.py` provides an end-to-end pipeline
+supporting three architectures: **MLP**, **GCN**, and **Transformer**.
+
+### 6.1 Initialising the Trainer
+
+```python
+from src.rom_model.trainer import ROMTrainer
+
+# Create trainer for GCN model
+trainer = ROMTrainer(
+    data_dir="mock_data/lhs",       # Directory with *.npy samples
+    model_dir="models/lhs",          # Where to save trained .keras files
+    model_type="gcn"                 # Choose: "mlp", "gcn", or "transformer"
+)
+```
+
+### 6.2 Full Training Pipeline
+
+```python
+trainer.train()
+```
+
+This does:
+
+1. **Load data** — All `*_params.npy`, `*_disp.npy`, `*_stress.npy` files
+2. **Split** — 80% train, 15% test, 5% validation (random state 42)
+3. **Standardise** — Fit `StandardScaler` on training data, save for inference
+4. **Train displacement model** — Separate GCN for 2268-D displacement field
+5. **Train stress model** — Separate GCN for 756-D stress field
+6. **Save artefacts**:
+   - `models/lhs/rom_disp.keras` — Trained displacement model
+   - `models/lhs/rom_stress.keras` — Trained stress model
+   - `models/lhs/scaler_mean.npy`, `scaler_std.npy` — For input normalisation
+   - `models/lhs/model_type.txt` — Records `"gcn"`
+   - `models/lhs/metrics.json` — R² scores on test set
+
+### 6.3 Callbacks and Regularisation
+
+Both models use:
+
+- **Early Stopping** — Monitors validation loss, stops after 50 epochs without improvement
+- **ReduceLROnPlateau** — Halves learning rate if validation loss doesn't improve for 20 epochs
+- **TensorBoard logging** — Histograms, graphs, and loss curves saved under `logs/<timestamp>/`
+
+### 6.4 Inference with Saved Models
+
+```python
+from src.rom_model.visualizer import ROMVisualizer
+
+visualizer = ROMVisualizer(
+    model_dir="models/lhs",
+    model_type="gcn"  # Must match the training model_type
+)
+
+# Predict on new input [L, w, d, P]
+visualizer.visualise(L=15.0, w=2.0, d=2.0, P=250.0)
+```
 
 ---
 

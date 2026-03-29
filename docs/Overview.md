@@ -13,9 +13,10 @@
 3. [Data Preprocessing](#3-data-preprocessing)
 4. [Model 1 — MLP (Multi-Layer Perceptron)](#4-model-1--mlp-multi-layer-perceptron)
 5. [Model 2 — GCN (Graph Convolutional Network)](#5-model-2--gcn-graph-convolutional-network)
-6. [Training Strategy](#6-training-strategy)
-7. [Evaluation &amp; Visualisation](#7-evaluation--visualisation)
-8. [How to Run](#8-how-to-run)
+6. [Model 3 — Transformer](#6-model-3--transformer)
+7. [Training Strategy](#7-training-strategy)
+8. [Evaluation &amp; Visualisation](#8-evaluation--visualisation)
+9. [How to Run](#9-how-to-run)
 
 ---
 
@@ -26,10 +27,10 @@ Given four input parameters:
 
 | Symbol | Name   | Unit | Range       |
 | ------ | ------ | ---- | ----------- |
-| L      | Length | mm   | 5 – 20     |
-| w      | Width  | mm   | 1 – 3      |
-| d      | Depth  | mm   | 1 – 3      |
-| P      | Load   | N    | -500 – 500 |
+| L      | Length | mm   | 100 – 500     |
+| w      | Width  | mm   | 20 – 50      |
+| d      | Depth  | mm   | 10 – 20      |
+| P      | Load   | N    | 100 – 1000 |
 
 We want to predict the **full displacement field** (a 3D vector at every mesh node) and the
 **full stress field** (σ_xx at every mesh node) — without running a traditional FEA solver.
@@ -292,11 +293,124 @@ Step 4 — Decode to output field:
 
 ---
 
-## 6. Training Strategy
+## 6. Model 3 — Transformer
+
+### 6.1 Why Transformers for FEA?
+
+Transformers have revolutionised sequence modelling through **self-attention**: each node learns to
+focus on which other nodes are most relevant for predicting its own output. Unlike GCNs (which only
+look at immediate neighbours in one layer), Transformers can attend to *all* nodes simultaneously,
+allowing the model to learn long-range interactions across the entire mesh in a single layer.
+
+> **Analogy:** In a GCN, information spreads incrementally like a wave. In a Transformer,
+> every node can "look" at every other node instantly and decide what's important.
+
+### 6.2 Positional Embedding
+
+Since the Transformer architecture is inherently **permutation-invariant** (self-attention doesn't
+care about input order), we must add positional information so the model knows *where* nodes are
+in the mesh.
+
+The `PositionalEmbedding` layer learns trainable embeddings for each of the N = 756 node positions:
+
+```python
+@keras.saving.register_keras_serializable(name="PositionalEmbedding")
+class PositionalEmbedding(layers.Layer):
+    """Simple trainable positional embedding layer."""
+    
+    def __init__(self, max_seq_len, embed_dim, **kwargs):
+        super().__init__(**kwargs)
+        self.max_seq_len = max_seq_len     # e.g., 756
+        self.embed_dim = embed_dim           # e.g., 64
+
+    def call(self, inputs):
+        # inputs shape: (B, N, F)
+        N_seq = tf.shape(inputs)[1]
+        positions = tf.range(start=0, limit=N_seq, delta=1)
+        # Add learned position embeddings to node features
+        return inputs + self.embedding(positions)
+```
+
+During the forward pass, each node's features are added to a learned embedding vector that encodes
+its mesh position. This breaks permutation invariance: the model now "knows" that node 0 is at
+position (0, 0, 0), node 1 at (0, 0, 1), etc.
+
+### 6.3 Transformer Encoder Architecture
+
+```
+Step 1 — Lift global params to per-node features:
+  Input: [L, w, d, P]  →  shape (4,)
+  RepeatVector(756)    →  shape (756, 4)   ← broadcast to all nodes
+  Dense(64, swish)     →  shape (756, 64)  ← initial node embeddings
+
+Step 2 — Add Positional Encoding:
+  PositionalEmbedding(max_seq_len=756, embed_dim=64)  →  shape (756, 64)
+  (Learned position vectors are added to node features)
+
+Step 3 — Three Transformer Encoder Blocks:
+  Each block contains:
+    a) MultiHeadAttention(num_heads=4, key_dim=64)
+       ↳ Each node attends to all other nodes
+       ↳ 4 parallel attention heads, each 16-dimensional
+    b) Residual connection + LayerNorm
+    c) FeedForward(256 hidden units)
+       ↳ Dense(256, swish) → Dense(64)
+    d) Residual connection + LayerNorm
+
+  After 3 blocks: shape (756, 64)
+
+Step 4 — Global Readout:
+  GlobalAveragePooling1D() →  shape (64,)  ← average all node features
+
+Step 5 — Dense Decoder:
+  Dense(256, swish)    →  shape (256,)
+  Dropout(0.1)
+  Dense(512, swish)    →  shape (512,)
+  Dense(output_dim)    →  shape (2268,) or (756,)
+```
+
+**Total trainable parameters ≈ ~550,000** (comparable to GCN)
+
+### 6.4 Attention as Message Passing
+
+While GCNs aggregate features only from direct neighbours, a Transformer's multi-head attention
+computes:
+
+```
+Attention(Q, K, V) = softmax(Q K^T / √d_k) V
+```
+
+where:
+- **Q (Query):** Each node asks "which other nodes are relevant?"
+- **K (Key):** Each node provides an identifier
+- **V (Value):** Each node broadcasts its feature vector
+- **softmax(...):** Weights sum to 1.0, focusing on the most important peers
+
+This is equivalent to a fully-connected graph where edge weights are **learned dynamically**
+based on node features — far more expressive than a fixed adjacency matrix.
+
+### 6.5 Comparison: MLP vs GCN vs Transformer
+
+| Aspect                      | MLP       | GCN                          | Transformer                   |
+| --------------------------- | --------- | ---------------------------- | ----------------------------- |
+| Exploits mesh topology      | ✗        | ✓ (fixed neighbours)         | ✓ (learned attention)         |
+| Long-range interactions     | ✗        | Requires many layers         | Learned in each layer         |
+| Parameter efficiency        | Higher    | Lower                        | Lower                         |
+| Training speed              | Fastest   | Slow                         | Slowest (O(N²) attention)     |
+| Interpretability            | Black-box | Node embeddings visible      | Attention weights inspectable |
+| Generalises to new topologies| ✗        | ✓ (same connectivity)        | ✗ (fixed N)                  |
+
+> **Trade-off:** Transformers are more expressive but computationally heavier.
+> For a fixed `21×6×6` mesh, they may not significantly outperform GCNs due to the small
+> graph size. Their advantage emerges with larger, more complex geometries.
+
+---
+
+## 7. Training Strategy
 
 Both models are trained **separately** for displacement and stress:
 
-### 6.1 Loss Function
+### 7.1 Loss Function
 
 ```
 MSE = (1/N) × Σ (ŷ_i - y_i)²
@@ -305,7 +419,7 @@ MSE = (1/N) × Σ (ŷ_i - y_i)²
 Mean Squared Error penalises large errors more than small ones, which is appropriate
 for regression over physical fields.
 
-### 6.2 Optimiser: Adam
+### 7.2 Optimiser: Adam
 
 Adam (Adaptive Moment Estimation) maintains per-parameter learning rates:
 
@@ -317,7 +431,7 @@ v_t = β₂ × v_{t-1} + (1 - β₂) × ∇L²  ← second moment (variance)
 Default: α=0.001, β₁=0.9, β₂=0.999
 ```
 
-### 6.3 Callbacks
+### 7.3 Callbacks
 
 #### Early Stopping
 
@@ -338,7 +452,7 @@ Epoch 70:  LR = 0.000025
 ...
 ```
 
-### 6.4 Train / Test Split
+### 7.4 Train / Test Split
 
 - **80%** training samples
 - **20%** held-out test samples (never seen during training)
@@ -346,14 +460,14 @@ Epoch 70:  LR = 0.000025
 
 ---
 
-## 7. Evaluation & Visualisation
+## 8. Evaluation & Visualisation
 
-### 7.1 Metrics
+### 8.1 Metrics
 
 - **Test MSE** — Mean Squared Error on the held-out set
 - **Test MAE** — Mean Absolute Error (easier to interpret in physical units)
 
-### 7.2 Visualiser
+### 8.2 Visualiser
 
 The `ROMVisualizer` class:
 
@@ -367,7 +481,7 @@ The `ROMVisualizer` class:
    - **Max displacement & stress** annotations on both panels
    - **% error** relative to ground truth on the predicted panel
 
-### 7.3 Interpreting % Error
+### 8.3 Interpreting % Error
 
 ```
 Disp Error (%)   = |max_pred_disp  - max_gt_disp|  / max_gt_disp  × 100
@@ -377,7 +491,7 @@ Stress Error (%) = |max_pred_stress - max_gt_stress| / max_gt_stress × 100
 Errors below **10%** are generally acceptable for engineering ROM applications.
 To improve accuracy: train on more samples (≥ 1000) and train for more epochs.
 
-### File Structure
+### 8.4 File Structure
 
 ```
 fea-ml-training/
@@ -392,12 +506,13 @@ fea-ml-training/
 │   │   ├── __init__.py        ← Re-exports all public symbols
 │   │   ├── layers.py          ← GCNLayer (custom Keras layer)
 │   │   ├── adjacency.py       ← Normalised adjacency matrix builder
-│   │   ├── architectures.py   ← MLP & GCN model factories
-│   │   └── trainer.py         ← ROMTrainer (training pipeline)
+│   │   ├── architectures.py   ← MLP, GCN, & Transformer model factories
+│   │   ├── trainer.py         ← ROMTrainer (training pipeline with model_type support)
+│   │   └── layers.py          ← Custom layers (GCNLayer, PositionalEmbedding)
 │   └── visualizer.py          ← ROMVisualizer (PyVista rendering)
 ├── tests/                     ← Batch scripts for end-to-end testing
 ├── mock_data/<sampling>/      ← Generated .npy and .vtk samples
-└── models/<sampling>/         ← Saved .keras models + scaler .npy files
+└── models/<model_type>/<sampling>/         ← Saved .keras models + scaler .npy files
 ```
 
 ---
