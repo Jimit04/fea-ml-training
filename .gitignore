@@ -19,3 +19,6 @@ mock_data
 temp_gt
 logs/
 screenshots/
+
+# notebook
+.ipynb_checkpoints
